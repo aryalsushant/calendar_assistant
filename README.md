@@ -1,45 +1,115 @@
 # Calendar Assistant Bot
 
-A Telegram bot that manages your Google Calendar using natural language, powered by Gemini.
+A Telegram bot that manages your Google Calendar using natural language, powered by Gemini. Tell it what you want in plain English — it'll create, update, delete, and list your events.
 
-**Architecture:**
+> The bot understands recurring events. When you modify or delete one, it always asks whether you want to change just one occurrence or the entire series.
+
+---
+
+## Quick Setup
+
+### Step 1 — Clone the repo
+
+```bash
+git clone https://github.com/aryalsushant/calendar_assistant.git
+cd calendar_assistant
 ```
-Telegram → Python bot → Gemini (intent) → Calendar API → Gemini (response) → Telegram
-```
 
-## Setup
+---
 
-### 1. Google Cloud Console
-1. Create a project at [console.cloud.google.com](https://console.cloud.google.com)
-2. Enable the **Google Calendar API**
-3. Go to **APIs & Services → Credentials → Create Credentials → OAuth 2.0 Client ID**
-4. Choose **Desktop application**, download the JSON, and save it as `credentials.json` in the project root
+### Step 2 — Create a Telegram bot
 
-### 2. Telegram Bot
-1. Message [@BotFather](https://t.me/BotFather) on Telegram
-2. Send `/newbot`, follow the prompts, and copy the token
+1. Open Telegram and search for **@BotFather**.
+2. Send `/newbot` and follow the prompts (choose a name and a username ending in `bot`).
+3. BotFather will give you a token like `123456789:ABC-DEF...`. Copy it.
 
-### 3. Gemini API
-1. Get an API key from [Google AI Studio](https://aistudio.google.com/apikey)
+---
 
-### 4. Environment
+### Step 3 — Get a Gemini API key
+
+1. Go to [Google AI Studio](https://aistudio.google.com/apikey) and sign in.
+2. Click **Create API Key** and copy it.
+
+---
+
+### Step 4 — Set up Google Calendar API
+
+#### 4a. Create a Google Cloud project
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com).
+2. Click the project dropdown at the top → **New Project**.
+3. Name it (e.g., `Calendar Assistant`) and click **Create**.
+4. Make sure the new project is selected.
+
+#### 4b. Enable the Calendar API
+
+1. Go to **APIs & Services → Library** ([direct link](https://console.cloud.google.com/apis/library)).
+2. Search for **Google Calendar API**, click it, then click **Enable**.
+
+#### 4c. Configure the OAuth consent screen
+
+1. Go to **APIs & Services → OAuth consent screen**.
+2. Choose **External** → **Create**.
+3. Fill in **App name**, **User support email**, and **Developer contact email** (use your own email for all three).
+4. Click **Save and Continue** through the remaining pages.
+5. On the **Test users** page, click **+ Add Users** and add your own Gmail address.
+
+> While the app is in "Testing" mode, only listed test users can authorize it.
+
+#### 4d. Create OAuth2 credentials
+
+1. Go to **APIs & Services → Credentials**.
+2. Click **+ Create Credentials → OAuth client ID**.
+3. Application type: **Desktop app**. Click **Create**.
+4. Click **Download JSON** on the dialog that appears.
+5. Rename the file to `credentials.json` and place it in the project root.
+
+---
+
+### Step 5 — Configure environment variables
+
 ```bash
 cp .env.example .env
-# Fill in your values:
-#   TELEGRAM_BOT_TOKEN=...
-#   GEMINI_API_KEY=...
-#   GOOGLE_CREDENTIALS_PATH=credentials.json
 ```
 
-### 5. Install & Run
+Open `.env` and fill in your values:
+
+| Variable | Value |
+|---|---|
+| `TELEGRAM_BOT_TOKEN` | Token from Step 2 |
+| `GEMINI_API_KEY` | Key from Step 3 |
+| `GOOGLE_CREDENTIALS_PATH` | Path to your credentials file (default: `credentials.json`) |
+| `GOOGLE_CALENDAR_ID` | Calendar to manage (default: `primary`) |
+
+---
+
+### Step 6 — Install and run
+
 ```bash
-python -m venv venv
-source venv/bin/activate
+python3 -m venv venv
+source venv/bin/activate        # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 python main.py
 ```
 
-On first run, a browser window will open for Google OAuth consent. After granting access, a `token.json` is saved for future runs.
+On the first run, a browser window opens for Google OAuth consent. Sign in and grant calendar access — a `token.json` is saved so you won't be asked again.
+
+> If you see a "Google hasn't verified this app" warning, click **Advanced → Go to Calendar Assistant (unsafe)**. This is expected for personal OAuth apps in testing mode.
+
+---
+
+### Step 7 — Verify it's working
+
+Check the terminal output. A healthy start looks like:
+
+```
+2026-03-16 20:30:00 - __main__ - INFO - Database initialized.
+2026-03-16 20:30:00 - __main__ - INFO - Bot is starting... Press Ctrl+C to stop.
+```
+
+Then open your bot in Telegram and send a message like **"What's on my calendar tomorrow?"** — you should get a response listing your events.
+
+---
 
 ## Example Commands
 
@@ -50,7 +120,7 @@ On first run, a browser window will open for Google OAuth consent. After grantin
 | "Cancel my meeting with Bipul" | Finds and deletes the event |
 | "Move my standup to Thursday at 3pm" | Updates the event time |
 
-The bot handles **recurring events** — it will always ask whether you want to change just one occurrence or the entire series before making changes.
+---
 
 ## Project Structure
 
@@ -73,3 +143,11 @@ The bot handles **recurring events** — it will always ask whether you want to 
 │   └── settings.py           # Environment config
 └── main.py                   # Entry point
 ```
+
+---
+
+## Security
+
+- **Never commit `.env`** — it contains your API tokens. The `.gitignore` excludes it automatically.
+- **Never share `credentials.json` or `token.json`** — anyone with these can access your Google Calendar.
+- Rotate your tokens immediately if you suspect they've been exposed.
