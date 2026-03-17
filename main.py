@@ -2,6 +2,7 @@
 Entry point — initializes the database and starts the Telegram bot.
 """
 
+import asyncio
 import logging
 import sys
 
@@ -31,6 +32,10 @@ def main() -> None:
     # Build and run the Telegram bot
     app = create_application(TELEGRAM_BOT_TOKEN)
     logger.info("Bot is starting... Press Ctrl+C to stop.")
+
+    # Python 3.14 removed implicit event loop creation, so set one explicitly
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     app.run_polling(drop_pending_updates=True)
 
 
