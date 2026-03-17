@@ -113,6 +113,21 @@ Then open your bot in Telegram and send a message like **"What's on my calendar 
 
 ---
 
+## Deployment (Railway)
+
+This bot is designed to run continuously in the background. [Railway](https://railway.app/) is a great, free/cheap option.
+
+1. **Procfile:** A `Procfile` is already included in the repo (`worker: python main.py`). Railway will automatically detect it and run the bot as a background worker.
+2. **Environment Variables:** In your Railway project, add the variables from your `.env` file (`TELEGRAM_BOT_TOKEN`, `GEMINI_API_KEY`, etc.).
+3. **Google Auth Files:** 
+   - Because the initial Google OAuth flow requires a browser, you MUST authenticate locally first (run `python main.py` on your computer).
+   - Once you have the `token.json` file, you need to provide it to Railway. The easiest way for a private bot is to temporarily remove `token.json` and `credentials.json` from your `.gitignore`, commit them, and push to Railway.
+   - *Security Note: Only do this if your GitHub repo is PRIVATE. Never commit these files to a public repository.*
+4. **Persistent State (Volume):** The bot uses an SQLite database (`data/conversation_state.db`) for conversation memory. Railway's filesystem is ephemeral (it resets on every deploy). 
+   - If you want the bot to remember multi-step conversations across bot restarts, you should attach a **Volume** to your Railway service mounted at `/app/data`.
+
+---
+
 ## Example Commands
 
 | What you say | What happens |
