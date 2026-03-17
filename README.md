@@ -50,19 +50,21 @@ cd calendar_assistant
 
 1. Go to **APIs & Services → OAuth consent screen**.
 2. Choose **External** → **Create**.
-3. Fill in **App name**, **User support email**, and **Developer contact email** (use your own email for all three).
-4. Click **Save and Continue** through the remaining pages.
-5. On the **Test users** page, click **+ Add Users** and add your own Gmail address.
+3. Fill in **App name** (e.g., `Calendar Assistant`), **User support email**, and **Developer contact email** — use your own email for all three.
+4. Skip the logo — just scroll down and click **Save and Continue**.
+5. On the **Scopes** page — don't change anything, just click **Save and Continue**.
+6. On the **Test users** page — click **+ Add Users**, enter your Gmail address, then click **Save and Continue**.
+7. Review the summary and click **Back to Dashboard**.
 
-> While the app is in "Testing" mode, only listed test users can authorize it.
+> While the app is in "Testing" mode, only test users you added can authorize it.
 
 #### 4d. Create OAuth2 credentials
 
-1. Go to **APIs & Services → Credentials**.
+1. In the left sidebar, click **Credentials**.
 2. Click **+ Create Credentials → OAuth client ID**.
-3. Application type: **Desktop app**. Click **Create**.
-4. Click **Download JSON** on the dialog that appears.
-5. Rename the file to `credentials.json` and place it in the project root.
+3. Application type: **Desktop app**. Give it any name and click **Create**.
+4. On the dialog that appears, click **Download JSON**.
+5. Rename the downloaded file to `credentials.json` and move it into the project root (next to `main.py`).
 
 ---
 
