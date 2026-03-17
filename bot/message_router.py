@@ -38,6 +38,7 @@ async def handle_message(chat_id: int, text: str) -> str:
     Process an incoming message and return a response string.
 
     Handles both fresh intents and follow-up answers to pending questions.
+    Supports multiple intents in a single message.
     """
     try:
         # Check for pending conversation state
@@ -45,28 +46,40 @@ async def handle_message(chat_id: int, text: str) -> str:
         if state:
             return await _handle_followup(chat_id, text, state)
 
-        # Parse intent from scratch
-        intent = await parse_intent(text)
-        logger.info("Parsed intent: %s", intent)
+        # Parse intent(s) from the message
+        intents = await parse_intent(text)
+        logger.info("Parsed %d intent(s): %s", len(intents), intents)
 
-        intent_type = intent.get("intent", "unknown")
+        responses: list[str] = []
 
-        if intent_type == "get_schedule":
-            return await _handle_get_schedule(chat_id, intent)
-        elif intent_type == "create_event":
-            return await _handle_create_event(chat_id, intent)
-        elif intent_type == "delete_event":
-            return await _handle_delete_event(chat_id, intent)
-        elif intent_type == "update_event":
-            return await _handle_update_event(chat_id, intent)
-        elif intent_type == "error":
-            return f"Sorry, I had trouble understanding that. {intent.get('reason', '')}"
-        else:
-            return (
-                "I'm not sure what you'd like me to do. "
-                "I can check your schedule, create events, update events, or cancel events. "
-                "Could you rephrase that?"
-            )
+        for intent in intents:
+            intent_type = intent.get("intent", "unknown")
+
+            if intent_type == "get_schedule":
+                resp = await _handle_get_schedule(chat_id, intent)
+            elif intent_type == "create_event":
+                resp = await _handle_create_event(chat_id, intent)
+            elif intent_type == "delete_event":
+                resp = await _handle_delete_event(chat_id, intent)
+            elif intent_type == "update_event":
+                resp = await _handle_update_event(chat_id, intent)
+            elif intent_type == "error":
+                resp = f"Sorry, I had trouble understanding that. {intent.get('reason', '')}"
+            else:
+                resp = (
+                    "I'm not sure what you'd like me to do. "
+                    "I can check your schedule, create events, update events, or cancel events. "
+                    "Could you rephrase that?"
+                )
+
+            responses.append(resp)
+
+            # If this intent triggered a follow-up question (state was set),
+            # stop processing remaining intents — they'll need a new message
+            if get_state(chat_id):
+                break
+
+        return "\n\n".join(responses)
 
     except Exception as e:
         logger.exception("Error handling message")

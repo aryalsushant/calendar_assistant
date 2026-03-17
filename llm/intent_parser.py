@@ -12,11 +12,13 @@ logger = logging.getLogger(__name__)
 
 SYSTEM_INSTRUCTION = """\
 You are an intent-extraction engine for a calendar assistant.
-Given the user's message, current date/time, and timezone, extract a structured JSON object.
+Given the user's message, current date/time, and timezone, extract structured JSON.
 
 Return ONLY valid JSON — no markdown fences, no commentary.
 
-Schema:
+IMPORTANT: If the user's message contains MULTIPLE actions (e.g. "Move my standup to 3pm and cancel my meeting with Bipul"), return a JSON ARRAY of intent objects. If the message contains only ONE action, return a single JSON object (not an array).
+
+Each intent object follows this schema:
 {
   "intent": "get_schedule" | "create_event" | "delete_event" | "update_event" | "unknown",
   "title": "<event title or search phrase, or null>",
@@ -49,19 +51,29 @@ Rules:
 """
 
 
+def _normalise_intent(intent: dict) -> dict:
+    """Fill in default values for optional fields."""
+    intent.setdefault("title", None)
+    intent.setdefault("datetime", None)
+    intent.setdefault("end_datetime", None)
+    intent.setdefault("time_range", None)
+    intent.setdefault("recurrence_scope", "unspecified")
+    intent.setdefault("attendees", [])
+    intent.setdefault("timezone", None)
+    intent.setdefault("update_fields", {})
+    intent.setdefault("extra", {})
+    return intent
+
+
 async def parse_intent(
     user_message: str,
     timezone: str | None = None,
-) -> dict:
+) -> list[dict]:
     """
-    Parse a user's natural-language message into a structured intent dict.
+    Parse a user's natural-language message into a list of structured intents.
 
-    Args:
-        user_message: The raw message from the user.
-        timezone: Optional timezone override.
-
-    Returns:
-        Parsed intent dict. On failure, returns {"intent": "error", "reason": "..."}.
+    Returns a list even for single-action messages (for uniform handling).
+    On failure, returns a single-element list with an error intent.
     """
     tz = timezone or "America/Chicago"
     now = now_in_tz(tz)
@@ -79,32 +91,35 @@ async def parse_intent(
         cleaned = raw.strip()
         if cleaned.startswith("```"):
             lines = cleaned.split("\n")
-            # Remove first and last lines (fences)
             lines = [l for l in lines if not l.strip().startswith("```")]
             cleaned = "\n".join(lines)
 
-        intent = json.loads(cleaned)
+        parsed = json.loads(cleaned)
 
-        # Validate required field
-        if "intent" not in intent:
-            return {"intent": "error", "reason": "Missing 'intent' field in LLM output."}
+        # Normalise to a list of intents
+        if isinstance(parsed, list):
+            intents = parsed
+        elif isinstance(parsed, dict):
+            intents = [parsed]
+        else:
+            return [{"intent": "error", "reason": "Unexpected LLM output format."}]
 
-        # Normalise optional fields
-        intent.setdefault("title", None)
-        intent.setdefault("datetime", None)
-        intent.setdefault("end_datetime", None)
-        intent.setdefault("time_range", None)
-        intent.setdefault("recurrence_scope", "unspecified")
-        intent.setdefault("attendees", [])
-        intent.setdefault("timezone", None)
-        intent.setdefault("update_fields", {})
-        intent.setdefault("extra", {})
+        # Validate and normalise each intent
+        result = []
+        for intent in intents:
+            if not isinstance(intent, dict) or "intent" not in intent:
+                logger.warning("Skipping invalid intent object: %s", intent)
+                continue
+            result.append(_normalise_intent(intent))
 
-        return intent
+        if not result:
+            return [{"intent": "error", "reason": "No valid intents parsed."}]
+
+        return result
 
     except json.JSONDecodeError as e:
         logger.warning("Failed to parse Gemini response as JSON: %s", e)
-        return {"intent": "error", "reason": f"Invalid JSON from LLM: {e}"}
+        return [{"intent": "error", "reason": f"Invalid JSON from LLM: {e}"}]
     except RuntimeError as e:
         logger.error("Gemini API call failed: %s", e)
-        return {"intent": "error", "reason": str(e)}
+        return [{"intent": "error", "reason": str(e)}]
