@@ -176,6 +176,8 @@ async def _find_and_act(chat_id: int, intent: dict, action: str) -> str:
     Shared logic for delete/update: find matching events, handle disambiguation,
     check recurrence scope, then execute.
     """
+    from datetime import timedelta
+
     tz = intent.get("timezone") or DEFAULT_TIMEZONE
     title = intent.get("title")
     dt_str = intent.get("datetime")
@@ -183,20 +185,24 @@ async def _find_and_act(chat_id: int, intent: dict, action: str) -> str:
     if not title:
         return f"Which event would you like to {action}?"
 
-    # Build a search window
+    # Build a search window — tight when we have a date, wide when we don't
+    has_specific_date = False
     if dt_str:
         parsed = parse_datetime(dt_str, tz)
         if parsed:
-            time_range = get_time_range(dt_str, tz)
+            # Narrow to just the day the user mentioned (midnight to midnight)
+            day_start = parsed.replace(hour=0, minute=0, second=0, microsecond=0)
+            day_end = day_start + timedelta(days=1)
+            time_range = (day_start, day_end)
+            has_specific_date = True
         else:
             time_range = None
     else:
         time_range = None
 
-    # Default: search next 7 days if no date given
+    # Fallback: search next 7 days if no date given
     if not time_range:
         now = now_in_tz(tz)
-        from datetime import timedelta
         time_range = (now, now + timedelta(days=7))
 
     start, end = time_range
@@ -206,13 +212,31 @@ async def _find_and_act(chat_id: int, intent: dict, action: str) -> str:
     matches = find_matching_events(title, events)
 
     if not matches:
-        return f"I couldn't find any event matching \"{title}\" in that time range."
+        # If we searched a narrow window and found nothing, try a wider fallback
+        if has_specific_date:
+            now = now_in_tz(tz)
+            events = get_events_all_calendars(now, now + timedelta(days=7))
+            matches = find_matching_events(title, events)
+
+        if not matches:
+            return f"I couldn't find any event matching \"{title}\" in that time range."
 
     if len(matches) == 1:
         event, score = matches[0]
-        return await _check_recurrence_and_act(chat_id, event, intent, action)
+        return await _check_recurrence_and_act(
+            chat_id, event, intent, action, has_specific_date,
+        )
 
-    # Multiple matches → ask user to pick
+    # Multiple matches — if the top match is clearly the best, use it directly
+    top_score = matches[0][1]
+    second_score = matches[1][1] if len(matches) > 1 else 0
+    if top_score >= 75 and (top_score - second_score) >= 15:
+        event, score = matches[0]
+        return await _check_recurrence_and_act(
+            chat_id, event, intent, action, has_specific_date,
+        )
+
+    # Genuinely ambiguous → ask user to pick
     top_matches = matches[:5]
     events_for_clarification = [e for e, _ in top_matches]
 
@@ -220,6 +244,7 @@ async def _find_and_act(chat_id: int, intent: dict, action: str) -> str:
         "status": "awaiting_event_selection",
         "action": action,
         "intent": intent,
+        "has_specific_date": has_specific_date,
         "candidates": [
             {
                 "id": e.get("id"),
@@ -242,26 +267,31 @@ async def _check_recurrence_and_act(
     event: dict,
     intent: dict,
     action: str,
+    has_specific_date: bool = False,
 ) -> str:
     """Check if event is recurring and scope is specified, then execute or ask."""
     scope = intent.get("recurrence_scope", "unspecified")
 
     if is_recurring(event) and scope == "unspecified":
-        # Must ask before proceeding
-        set_state(chat_id, {
-            "status": "awaiting_recurrence_scope",
-            "action": action,
-            "intent": intent,
-            "event_id": event["id"],
-            "event_summary": event.get("summary", "Untitled"),
-            "calendar_id": event.get("_calendar_id", "primary"),
-        })
-        clarification = await generate_clarification("recurrence_scope", {
-            "title": event.get("summary", "this event"),
-        })
-        return clarification
+        # If user mentioned a specific date, they mean that single occurrence
+        if has_specific_date:
+            scope = "single"
+        else:
+            # No date context — must ask before proceeding
+            set_state(chat_id, {
+                "status": "awaiting_recurrence_scope",
+                "action": action,
+                "intent": intent,
+                "event_id": event["id"],
+                "event_summary": event.get("summary", "Untitled"),
+                "calendar_id": event.get("_calendar_id", "primary"),
+            })
+            clarification = await generate_clarification("recurrence_scope", {
+                "title": event.get("summary", "this event"),
+            })
+            return clarification
 
-    # Non-recurring or scope already specified
+    # Non-recurring or scope already determined
     effective_scope = "single" if not is_recurring(event) else scope
     return await _execute_action(chat_id, event, intent, action, effective_scope)
 
@@ -410,22 +440,47 @@ async def _followup_end_time(chat_id: int, text: str, state: dict) -> str:
 
 
 async def _followup_event_selection(chat_id: int, text: str, state: dict) -> str:
-    """User selected an event from a numbered list."""
+    """User selected an event — accepts a number OR natural language."""
     candidates = state.get("candidates", [])
     action = state.get("action", "delete")
     intent = state.get("intent", {})
+    has_specific_date = state.get("has_specific_date", False)
 
-    # Try to extract a number
-    import re
-    match = re.search(r"\d+", text)
-    if not match:
-        return "Please reply with the number of the event you mean."
+    selected = None
 
-    idx = int(match.group()) - 1  # 1-indexed → 0-indexed
-    if idx < 0 or idx >= len(candidates):
-        return f"Please pick a number between 1 and {len(candidates)}."
+    # Strategy 1: Try fuzzy matching the reply against candidate summaries
+    from thefuzz import fuzz
+    best_idx = -1
+    best_score = 0
+    second_score = 0
+    for i, c in enumerate(candidates):
+        score = fuzz.token_set_ratio(text.lower(), c.get("summary", "").lower())
+        if score > best_score:
+            second_score = best_score
+            best_score = score
+            best_idx = i
+        elif score > second_score:
+            second_score = score
 
-    selected = candidates[idx]
+    # Accept fuzzy match if it's clearly the best
+    if best_score >= 70 and (best_score - second_score) >= 15:
+        selected = candidates[best_idx]
+
+    # Strategy 2: Try number extraction
+    if not selected:
+        import re
+        match = re.search(r"\d+", text)
+        if match:
+            idx = int(match.group()) - 1
+            if 0 <= idx < len(candidates):
+                selected = candidates[idx]
+
+    if not selected:
+        return (
+            "I'm not sure which one you mean. "
+            "You can reply with the event name or its number from the list."
+        )
+
     event_id = selected["id"]
     calendar_id = selected.get("calendar_id", "primary")
 
@@ -438,7 +493,9 @@ async def _followup_event_selection(chat_id: int, text: str, state: dict) -> str
     event["_calendar_id"] = calendar_id
 
     clear_state(chat_id)
-    return await _check_recurrence_and_act(chat_id, event, intent, action)
+    return await _check_recurrence_and_act(
+        chat_id, event, intent, action, has_specific_date,
+    )
 
 
 async def _followup_recurrence_scope(chat_id: int, text: str, state: dict) -> str:

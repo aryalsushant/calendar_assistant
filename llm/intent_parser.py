@@ -38,8 +38,12 @@ Rules:
 - For "get_schedule", populate "time_range" (e.g. "next 2 days", "tomorrow", "this week").
 - For "create_event", populate "title", "datetime". Populate "end_datetime" ONLY if the user specifies an end time or duration. If NOT specified, set "end_datetime" to null.
 - For "delete_event", populate "title" and optionally "datetime" to help narrow the search.
-- For "update_event", populate "title" and "update_fields" with the changes.
-- "recurrence_scope" should be "unspecified" unless the user clearly states "this one", "just this occurrence", "the whole series", "all of them", etc.
+- For "update_event", populate "title", "datetime" (the current date/time of the event being changed), and "update_fields" with the changes.
+- IMPORTANT — recurrence_scope rules:
+  - If the user mentions a SPECIFIC DATE (e.g. "tomorrow", "Friday", "March 20th"), set recurrence_scope to "single". They mean that one occurrence.
+  - If the user explicitly says "all", "every", "the whole series", "all occurrences", set to "series".
+  - ONLY set to "unspecified" if the user references a recurring event WITHOUT any date AND without indicating single vs series (e.g. "cancel my weekly standup" with no date).
+- "datetime" should ALWAYS be populated when the user references a date, even for delete/update intents. This is critical for narrowing the search.
 - If intent is unclear, use "unknown".
 - Always return valid JSON.
 """
