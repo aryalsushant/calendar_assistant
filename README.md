@@ -119,10 +119,11 @@ This bot is designed to run continuously in the background. [Railway](https://ra
 
 1. **Procfile:** A `Procfile` is already included in the repo (`worker: python main.py`). Railway will automatically detect it and run the bot as a background worker.
 2. **Environment Variables:** In your Railway project, add the variables from your `.env` file (`TELEGRAM_BOT_TOKEN`, `GEMINI_API_KEY`, etc.).
-3. **Google Auth Files:** 
-   - Because the initial Google OAuth flow requires a browser, you MUST authenticate locally first (run `python main.py` on your computer).
-   - Once you have the `token.json` file, you need to provide it to Railway. The easiest way for a private bot is to temporarily remove `token.json` and `credentials.json` from your `.gitignore`, commit them, and push to Railway.
-   - *Security Note: Only do this if your GitHub repo is PRIVATE. Never commit these files to a public repository.*
+3. **Google Auth (Secure for Public Repos):** 
+   Because your repository is public, you **MUST NOT** commit `credentials.json` or `token.json`. Instead, copy their raw text contents directly into Railway environment variables:
+   - Create a variable named `GOOGLE_OAUTH_CREDENTIALS_JSON` and paste the entire contents of your `credentials.json` file into it.
+   - Run the bot locally once to generate `token.json` via the browser login. Then create a variable named `GOOGLE_OAUTH_TOKEN_JSON` in Railway and paste the entire contents of `token.json` into it.
+   - The bot handles parsing these securely from memory in Railway without exposing them on your public repo.
 4. **Persistent State (Volume):** The bot uses an SQLite database (`data/conversation_state.db`) for conversation memory. Railway's filesystem is ephemeral (it resets on every deploy). 
    - If you want the bot to remember multi-step conversations across bot restarts, you should attach a **Volume** to your Railway service mounted at `/app/data`.
 

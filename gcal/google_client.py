@@ -3,13 +3,23 @@ Google Calendar API client — handles OAuth2 authentication and service creatio
 """
 
 import os
+import json
+import logging
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 
-from config.settings import GOOGLE_CREDENTIALS_PATH, GOOGLE_TOKEN_PATH, GOOGLE_SCOPES
+from config.settings import (
+    GOOGLE_CREDENTIALS_PATH,
+    GOOGLE_TOKEN_PATH,
+    GOOGLE_SCOPES,
+    GOOGLE_OAUTH_CREDENTIALS_JSON,
+    GOOGLE_OAUTH_TOKEN_JSON,
+)
+
+logger = logging.getLogger(__name__)
 
 
 def get_calendar_service():
@@ -18,11 +28,21 @@ def get_calendar_service():
 
     On first run, opens a browser for OAuth2 consent and saves the refresh
     token to token.json. Subsequent runs use the stored token silently.
+    If running in the cloud (Railway), it loads tokens directly from env vars.
     """
     creds: Credentials | None = None
 
-    # Load existing token
-    if os.path.exists(GOOGLE_TOKEN_PATH):
+    # Priority 1: Load from Environment Variable (for Railway / Cloud deployments)
+    if GOOGLE_OAUTH_TOKEN_JSON:
+        try:
+            token_info = json.loads(GOOGLE_OAUTH_TOKEN_JSON)
+            creds = Credentials.from_authorized_user_info(token_info, GOOGLE_SCOPES)
+        except json.JSONDecodeError as e:
+            logger.error("Failed to parse GOOGLE_OAUTH_TOKEN_JSON env var: %s", e)
+            raise ValueError(f"Invalid JSON in GOOGLE_OAUTH_TOKEN_JSON: {e}")
+
+    # Priority 2: Load existing token from file (local dev)
+    elif os.path.exists(GOOGLE_TOKEN_PATH):
         creds = Credentials.from_authorized_user_file(GOOGLE_TOKEN_PATH, GOOGLE_SCOPES)
 
     # Refresh or run full OAuth flow
@@ -30,19 +50,31 @@ def get_calendar_service():
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
         else:
-            if not os.path.exists(GOOGLE_CREDENTIALS_PATH):
-                raise FileNotFoundError(
-                    f"OAuth2 credentials file not found at {GOOGLE_CREDENTIALS_PATH}. "
-                    "Download it from Google Cloud Console → APIs & Services → Credentials."
+            # We need to run the OAuth flow
+            if GOOGLE_OAUTH_CREDENTIALS_JSON:
+                try:
+                    client_config = json.loads(GOOGLE_OAUTH_CREDENTIALS_JSON)
+                    flow = InstalledAppFlow.from_client_config(client_config, GOOGLE_SCOPES)
+                except json.JSONDecodeError as e:
+                    logger.error("Failed to parse GOOGLE_OAUTH_CREDENTIALS_JSON: %s", e)
+                    raise ValueError(f"Invalid JSON in GOOGLE_OAUTH_CREDENTIALS_JSON: {e}")
+            elif os.path.exists(GOOGLE_CREDENTIALS_PATH):
+                flow = InstalledAppFlow.from_client_secrets_file(
+                    GOOGLE_CREDENTIALS_PATH, GOOGLE_SCOPES,
                 )
-            flow = InstalledAppFlow.from_client_secrets_file(
-                GOOGLE_CREDENTIALS_PATH, GOOGLE_SCOPES,
-            )
+            else:
+                raise FileNotFoundError(
+                    "OAuth2 credentials not found. Set GOOGLE_OAUTH_CREDENTIALS_JSON env var "
+                    f"or download credentials.json to {GOOGLE_CREDENTIALS_PATH}."
+                )
             creds = flow.run_local_server(port=0)
 
-        # Save for next run
-        with open(GOOGLE_TOKEN_PATH, "w") as token_file:
-            token_file.write(creds.to_json())
+        # Save the token to local filesystem for the next run (if possible)
+        try:
+            with open(GOOGLE_TOKEN_PATH, "w") as token_file:
+                token_file.write(creds.to_json())
+        except OSError as e:
+            logger.warning("Could not write token.json to disk: %s", e)
 
     return build("calendar", "v3", credentials=creds)
 

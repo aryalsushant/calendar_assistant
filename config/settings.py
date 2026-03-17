@@ -28,6 +28,9 @@ GEMINI_API_KEY: str = _require("GEMINI_API_KEY")
 GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
 # ── Google Calendar ──────────────────────────────────────────────────────────
+GOOGLE_OAUTH_CREDENTIALS_JSON: str | None = os.getenv("GOOGLE_OAUTH_CREDENTIALS_JSON")
+GOOGLE_OAUTH_TOKEN_JSON: str | None = os.getenv("GOOGLE_OAUTH_TOKEN_JSON")
+
 GOOGLE_CREDENTIALS_PATH: str = os.getenv(
     "GOOGLE_CREDENTIALS_PATH",
     str(_project_root / "credentials.json"),
