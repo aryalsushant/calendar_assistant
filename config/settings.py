@@ -11,11 +11,20 @@ from dotenv import load_dotenv
 _project_root = Path(__file__).resolve().parent.parent
 load_dotenv(_project_root / ".env")
 
+
+def _require(name: str) -> str:
+    """Fetch a required env var, raising an error if it's missing."""
+    value = os.getenv(name)
+    if not value:
+        raise EnvironmentError(f"Missing required environment variable: {name}")
+    return value
+
+
 # ── Telegram ─────────────────────────────────────────────────────────────────
-TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_BOT_TOKEN: str = _require("TELEGRAM_BOT_TOKEN")
 
 # ── Gemini ───────────────────────────────────────────────────────────────────
-GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
+GEMINI_API_KEY: str = _require("GEMINI_API_KEY")
 GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.0-flash-lite")
 
 # ── Google Calendar ──────────────────────────────────────────────────────────
@@ -30,7 +39,7 @@ GOOGLE_CALENDAR_ID: str = os.getenv("GOOGLE_CALENDAR_ID", "primary")
 GOOGLE_SCOPES: list[str] = ["https://www.googleapis.com/auth/calendar"]
 
 # ── Timezone ─────────────────────────────────────────────────────────────────
-DEFAULT_TIMEZONE: str = "America/Chicago"
+DEFAULT_TIMEZONE: str = os.getenv("TIMEZONE", "America/Chicago")
 
 # ── Database ─────────────────────────────────────────────────────────────────
 DB_PATH: str = str(_project_root / "data" / "conversation_state.db")

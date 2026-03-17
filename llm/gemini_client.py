@@ -1,13 +1,13 @@
 """
-Thin wrapper around the Google Generative AI (Gemini) SDK.
+Thin wrapper around the Google GenAI SDK (google.genai).
 """
 
-import google.generativeai as genai
+from google import genai
 
 from config.settings import GEMINI_API_KEY, GEMINI_MODEL
 
-# Configure once at import time
-genai.configure(api_key=GEMINI_API_KEY)
+# Create a single client instance
+_client = genai.Client(api_key=GEMINI_API_KEY)
 
 
 async def generate(
@@ -28,11 +28,15 @@ async def generate(
         RuntimeError: If the API call fails.
     """
     try:
-        model = genai.GenerativeModel(
-            model_name=GEMINI_MODEL,
-            system_instruction=system_instruction,
+        config = {}
+        if system_instruction:
+            config["system_instruction"] = system_instruction
+
+        response = await _client.aio.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=prompt,
+            config=config,
         )
-        response = await model.generate_content_async(prompt)
         return response.text.strip()
     except Exception as e:
         raise RuntimeError(f"Gemini API error: {e}") from e

@@ -98,7 +98,10 @@ def create_event(
     """
     service = get_calendar_service()
 
-    tz = timezone or start.tzinfo.key if hasattr(start.tzinfo, "key") else str(start.tzinfo)
+    if timezone:
+        tz = timezone
+    else:
+        tz = getattr(start.tzinfo, "key", None) or str(start.tzinfo)
 
     body: dict = {
         "summary": summary,

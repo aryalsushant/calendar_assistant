@@ -94,7 +94,7 @@ async def generate_clarification(question_type: str, context: dict) -> str:
             "Be brief and natural."
         ),
         "event_selection": (
-            f"Multiple events matched the user's query. Here are the options:\n"
+            "Multiple events matched the user's query. Here are the options:\n"
             + "\n".join(
                 f"{i+1}. {e.get('summary', 'Untitled')} — {e.get('start', {}).get('dateTime', 'unknown time')}"
                 for i, e in enumerate(context.get("events", []))
